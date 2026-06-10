@@ -1,0 +1,77 @@
+# ==============================================================================
+# 1. THE 2026 GOLD STANDARD: IGNORE EVERYTHING BY DEFAULT
+# ==============================================================================
+**
+
+# ==============================================================================
+# 2. GLOBAL WHITELIST EXCEPTIONS (Explicitly allow what you need)
+# ==============================================================================
+# Allow the main codebase structure
+!src/
+!public/
+
+# Allow specific configuration and package manifests
+!package.json
+!package-lock.json
+!yarn.lock
+!pnpm-lock.yaml
+!requirements.txt
+!go.mod
+!go.sum
+!pom.xml
+
+# ==============================================================================
+# 3. CRITICAL FALLBACKS (If you choose not to use the ignore-all approach)
+# ==============================================================================
+# Use these lines if you comment out the "**" catch-all rule above.
+
+# Version Control and Pipelines
+.git
+.gitignore
+.github
+.gitlab-ci.yml
+
+# Package Managers and Dev Dependencies
+node_modules
+.pnpm-store
+vendor/
+__pycache__/
+*.pyc
+
+# Local Environment & Secrets (Zero Trust)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.passwd
+
+# Local Build Artifacts and Cache
+dist/
+build/
+.next/
+.nuxt/
+.cache/
+.out/
+coverage/
+.nyc_output
+
+# IDEs, System Files, and Logs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker files themselves (prevents cache invalidation on docker config updates)
+Dockerfile*
+docker-compose*
+.dockerignore
