@@ -6,10 +6,12 @@ import time
 load_dotenv()
 
 def main():
-    EmailService()
+    service = EmailService()
+    service.processar_emails_financeiros()
+    time.sleep(10)  # Espera 60 segundos antes de verificar novamente
     
 if __name__ == "__main__":
 
     while True:
         main()
-        time.sleep(10)  # Espera 60 segundos antes de verificar novamente
+        
