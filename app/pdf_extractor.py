@@ -1,21 +1,78 @@
 import os
-from typing import List
-from pydantic import BaseModel, Field #type:ignore
+from typing import Dict, List
+from pydantic import BaseModel, Field #type: ignore
 from google import genai
-from google.genai import types #type:ignore
+from google.genai import types #type: ignore
 
-# 1- Definindo o modelo de dados para os resultados extraídos
+# 1. Definindo o contrato de dados (Schema) usando Pydantic
+# para que a IA SEMPRE retorne os campos exatamente com esses nomes e tipos
 
-class ItemTransacao(BaseModel):
-    periodo_movimento: str = Field(description="Periodo contábil da movimentação no formato MM/AAAA")
-    categoria: str = Field(description="Categoria da transação, como 'Caixa', 'Bancos', 'Contas a Receber CP', etc.")
-    valor: float = Field(description="Valor da transação, representado como um número decimal")
+class ItemConta(BaseModel):
+    nome_conta: str = Field(description="Nome exato da conta contábil (Ex: 'Caixa e Bancos', 'FATUR. BRUTO')")
+    valor: float = Field(description="Saldo numérico da conta (float)")
 
-class RelatorioFinanceiro(BaseModel):
-    empresa: str = Field(description="Nome da empresa a que o relatório financeiro pertence")
-    transacoes: List[ItemTransacao] = Field(description="Lista de transações financeiras")
+class DadosAnuais(BaseModel):
+    ano: str = Field(description="Ano das informações financeiras. ")
+    contas: List[ItemConta] = Field(
+        description="""
+        Dicionário onde a chave é o nome exato da conta e o valor é o saldo numérico.
+        Exemplos de chaves válidas: 'Caixa e Bancos', 'FATUR. BRUTO', 'Empréstimos Bancários', 'PATRIMONIO LIQUIDO'.
+        """
+    )
+
+class RelatorioEmpresa(BaseModel):
+    nome_empresa: str = Field(description="Nome oficial, Razão Social ou Denominação Comercial da empresa")
+    balancos: List[DadosAnuais] = Field(description="Lista contendo os dados extraídos de cada ano contábil")
+
 
 class FinancialExtractorService:
     def __init__(self):
         self.client = genai.Client()
-        self.model_name = 'gemini-2.5-flash'
+        self.model_name = "gemini-2.5-flash"
+
+    def extrair_dados_pdf(self, caminho_pdf: str) -> RelatorioEmpresa:
+        print(f"Processando {os.path.basename(caminho_pdf)} com IA...")
+
+        with open(caminho_pdf, "rb") as f:
+            pdf_bytes = f.read()
+
+        prompt = """
+        Atue como um auditor contábil sênior. Analise o PDF anexo e extraia as informações financeiras.
+        Você deve mapear os saldos encontrados para as seguintes nomenclaturas de contas:
+        
+        valores_ativo: 'Caixa e Bancos', 'Aplicações Financeiras', 'Contas a Receber', 'Cooperados', 'CVA', 'Estoques', 'Adiant. a Fornecedores', 'Créditos a Fumicultores', 'Despesas Antecipadas', 'Impostos a Recuperar', 'Dividendos a Receber', 'Imposto Diferido', 'Outros Operac.', 'Outros Nao Operac.', 'Contas a Receber LP', 'Cooperados LP', 'C/C Coligadas/Acionistas', 'Depósitos Judiciais', 'Imposto Diferido LP', 'Créditos a Fumicultores LP', 'CTNs', 'Outros Operac. LP', 'Outros Nao Operac. LP', 'Imobilizado Técnico', 'Investimentos', 'Diferido/Intangível'.
+        
+        valores_passivo_e_pl: 'Fornecedores Nacionais', 'Fornecedores Estrangeiros', 'Empréstimos Bancários', 'Financiamentos Operacionais', 'Financiamentos c/ Tradings', 'Parcelas Correntes Financ. L.P.', 'Debêntures', 'Swap', 'Securitização', 'Leasing', 'Salários e Encargos', 'Tributos e Obrigações Fiscais', 'Tributos Parcelados', 'Adiantamento de Clientes', 'Custo Orçado', 'Terrenos', 'Outorga', 'Compromissos Consorciados', 'Plano de Previdênciário', 'Dividendos a pagar', 'Provisão para Contingência', 'C/C Coligadas/Acionistas Passivo', 'Outros Operac. Passivo', 'Outros Nao Operac. Passivo', 'Empréstimos e Financiamentos LP', 'Debêntures LP', 'Leasing LP', 'Financiamentos c/ Tradings LP', 'Securitização LP', 'Custo Orçado LP', 'Terrenos LP', 'Outorga LP', 'Compromissos Consorciados LP', 'Plano de Previdênciário LP', 'Dividendos a pagar LP', 'Provisão para Contingência LP', 'Tributos Parcelados LP', 'C/C Coligadas/Acionistas LP', 'Outros Operac. LP', 'Outros Nao Operac. LP', 'PATRIMONIO LIQUIDO'.
+        
+        valores_dre: 'N° MESES DO PERIODO', 'FATUR. BRUTO', 'Impostos/Deduções', 'Depreciação/Amortização', 'Arrendamento Mercantil', 'Custos Diretos', 'Despesas Comerciais', 'Despesas Administrativas', 'Despesas c/ Depreciação', 'Despesas Financeiras', 'Receitas Financeiras', 'Variações Monetárias Líq. LP', 'Outras Rec./(Desp.) Operac.', 'Equivalência Patrimonial', 'Res. não Operacional', 'Correção Monetária', 'Desp. c/ Amortização de Ágio/(Deságio)', 'Prov. I.R./Contrib. Soc.', 'Participação Minoritária'.
+        
+        Ignore linhas de totais ou subtotais, pois a planilha onde vou colar essas informações já calcula isso via fórmulas.
+        Você pode consolidar informações semelhantes em uma única linha, mas deve manter a nomenclatura exata das contas conforme listado acima.
+        Caso não haja valores correspondentes a uma conta específica, retorne 0 para essa conta.
+        Extraia os valoresem base mil, e lembre-se de que o balanço tem que bater.
+        """
+
+        try:
+            # Faz a chamada especificando que queremos uma resposta estruturada (JSON) baseada no nosso modelo Pydantic
+            resposta = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[
+                    types.Part.from_bytes(
+                        data=pdf_bytes,
+                        mime_type="application/pdf"
+                    ),
+                    prompt
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=RelatorioEmpresa,
+                    temperature=0.1 # Temperatura baixa para manter a IA factual e evitar alucinações
+                ),
+            )
+
+            dados_estruturados = RelatorioEmpresa.model_validate_json(resposta.text)
+            return dados_estruturados
+
+        except Exception as e:
+            print(f"[ERRO GENAI] Falha ao processar o documento com IA: {e}")
+            return None
