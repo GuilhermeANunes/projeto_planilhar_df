@@ -26,18 +26,18 @@ def executar_automacao():
     relatorios_finais = []
 
     # 2. Processa cada documento encontrado
+    dados_empresa = extrator.extrair_dados_pdf(arquivos_pdf)
+
+    if dados_empresa:
+        relatorios_finais.append(dados_empresa)
+
+    # Move os PDFs originais para a pasta "processados" para não reprocessar na próxima execução
     for caminho_pdf in arquivos_pdf:
-        dados_empresa = extrator.extrair_dados_pdf(caminho_pdf)
-        
-        if dados_empresa:
-            relatorios_finais.append(dados_empresa)
-                
-            # Move o PDF original para a pasta "processados" para não reprocessar na próxima execução
             shutil.move(caminho_pdf, os.path.join(pasta_processados, os.path.basename(caminho_pdf)))
 
     # 3. Preenche todos os dados coletados de uma vez no modelo Excel
     if relatorios_finais:
-        gerenciador_excel.preencher_planilha(relatorios_finais)
+        gerenciador_excel.preencher_planilha(relatorios_finais.empresas)
 
 if __name__ == "__main__":
 

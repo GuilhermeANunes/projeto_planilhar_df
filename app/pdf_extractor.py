@@ -24,17 +24,29 @@ class RelatorioEmpresa(BaseModel):
     nome_empresa: str = Field(description="Nome oficial, Razão Social ou Denominação Comercial da empresa")
     balancos: List[DadosAnuais] = Field(description="Lista contendo os dados extraídos de cada ano contábil")
 
+class GrupoRelatorios(BaseModel):
+    empresas: List[RelatorioEmpresa] = Field(
+        description="Lista contendo as empresas identificadas nos documentos fornecidos. Se todos os PDFs forem da mesma empresa, esta lista terá apenas 1 elemento."
+    )
 
 class FinancialExtractorService:
     def __init__(self):
         self.client = genai.Client()
         self.model_name = "gemini-2.5-flash"
 
-    def extrair_dados_pdf(self, caminho_pdf: str) -> RelatorioEmpresa:
-        print(f"Processando {os.path.basename(caminho_pdf)} com IA...")
+    def extrair_dados_pdf(self, caminhos_pdfs: List[str]) -> GrupoRelatorios:
+        print(f"Processando arquivos com IA...")
 
-        with open(caminho_pdf, "rb") as f:
-            pdf_bytes = f.read()
+        conteudos_request = []
+
+        for caminho in caminhos_pdfs:
+            with open(caminho, "rb") as f:
+                pdf_bytes = f.read()
+
+            conteudos_request.append(types.Part.from_bytes(
+                data=pdf_bytes,
+                mime_type="application/pdf"
+                ))
 
         prompt = """
         Atue como um auditor contábil sênior. Analise o PDF anexo e extraia as informações financeiras.
@@ -49,29 +61,27 @@ class FinancialExtractorService:
         Ignore linhas de totais ou subtotais, pois a planilha onde vou colar essas informações já calcula isso via fórmulas.
         Você pode consolidar informações semelhantes em uma única linha, mas deve manter a nomenclatura exata das contas conforme listado acima.
         Caso não haja valores correspondentes a uma conta específica, retorne 0 para essa conta.
-        Extraia os valoresem base mil, e lembre-se de que o balanço tem que bater.
+        Extraia os valores com base mil, e lembre-se de que o valor do ativo total tem que ser o mesmo do passivo total + Patrimonio liquido.
         """
+        conteudos_request.append(prompt)
 
         try:
             # Faz a chamada especificando que queremos uma resposta estruturada (JSON) baseada no nosso modelo Pydantic
             resposta = self.client.models.generate_content(
                 model=self.model_name,
-                contents=[
-                    types.Part.from_bytes(
-                        data=pdf_bytes,
-                        mime_type="application/pdf"
-                    ),
-                    prompt
-                ],
+                contents=conteudos_request,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=RelatorioEmpresa,
+                    response_schema=GrupoRelatorios,
                     temperature=0.1 # Temperatura baixa para manter a IA factual e evitar alucinações
                 ),
             )
 
-            dados_estruturados = RelatorioEmpresa.model_validate_json(resposta.text)
-            return dados_estruturados
+            return GrupoRelatorios.model_validate_json(resposta.text)
+
+        except Exception['error']['code'] == 503:
+            print(f"[ERRO GENAI] IA com alta demanda. Estamos tentando novamente.")
+            return self.extrair_dados_pdf(caminhos_pdfs) # Tenta novamente em caso de erro 503 (Service Unavailable)
 
         except Exception as e:
             print(f"[ERRO GENAI] Falha ao processar o documento com IA: {e}")
